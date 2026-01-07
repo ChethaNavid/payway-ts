@@ -36,7 +36,12 @@ export class PayWayClient {
    * @param api_key - Your API key from ABA Bank
    * @param rsa_public_key - Optional RSA public key from ABA Bank (required for pre-auth operations)
    */
-  constructor(base_url: string, merchant_id: string, api_key: string, rsa_public_key?: string) {
+  constructor(
+    base_url: string,
+    merchant_id: string,
+    api_key: string,
+    rsa_public_key?: string,
+  ) {
     this.base_url = base_url;
     this.merchant_id = merchant_id;
     this.api_key = api_key;
@@ -54,11 +59,73 @@ export class PayWayClient {
   }
 
   /**
+   * Normalizes RSA public key to proper PEM format
+   *
+   * Handles common formatting issues:
+   * - Literal \n escape sequences (from copy-paste or database storage)
+   * - Missing or incorrect line breaks
+   * - Extra whitespace
+   *
+   * @param key - RSA public key string (may be malformed)
+   * @returns Properly formatted PEM key
+   * @throws Error if key is missing required markers
+   * @private
+   */
+  private normalizePublicKey(key: string): string {
+    // Remove extra whitespace
+    let normalized = key.trim();
+
+    // Replace literal \n with actual newlines
+    normalized = normalized.replace(/\\n/g, "\n");
+
+    // Ensure proper header/footer
+    if (!normalized.includes("-----BEGIN")) {
+      throw new Error(
+        "Invalid RSA public key: missing BEGIN marker. " +
+          'Key must start with "-----BEGIN PUBLIC KEY-----" or "-----BEGIN RSA PUBLIC KEY-----"',
+      );
+    }
+    if (!normalized.includes("-----END")) {
+      throw new Error(
+        "Invalid RSA public key: missing END marker. " +
+          'Key must end with "-----END PUBLIC KEY-----" or "-----END RSA PUBLIC KEY-----"',
+      );
+    }
+
+    // Extract key content between BEGIN and END markers and rebuild properly
+    const beginMatch = normalized.match(/-----BEGIN[^-]+-----/);
+    const endMatch = normalized.match(/-----END[^-]+-----/);
+
+    if (beginMatch && endMatch) {
+      const beginMarker = beginMatch[0];
+      const endMarker = endMatch[0];
+
+      // Extract content between markers and remove all whitespace
+      const startIdx = normalized.indexOf(beginMarker) + beginMarker.length;
+      const endIdx = normalized.indexOf(endMarker);
+      const keyContent = normalized
+        .substring(startIdx, endIdx)
+        .replace(/\s/g, "");
+
+      // Split into 64-character lines (standard PEM format)
+      const formattedLines = [];
+      for (let i = 0; i < keyContent.length; i += 64) {
+        formattedLines.push(keyContent.slice(i, i + 64));
+      }
+
+      // Rebuild key with proper formatting
+      normalized = `${beginMarker}\n${formattedLines.join("\n")}\n${endMarker}`;
+    }
+
+    return normalized;
+  }
+
+  /**
    * Encrypts data with RSA public key in 117-byte chunks
-   * 
+   *
    * Used for pre-auth operations where sensitive data (mc_id, tran_id, complete_amount)
    * must be encrypted using ABA Bank's RSA public key.
-   * 
+   *
    * @param data - Object to encrypt (will be JSON encoded)
    * @returns Base64 encoded encrypted data
    * @throws Error if RSA public key is not configured
@@ -68,37 +135,40 @@ export class PayWayClient {
     if (!this.rsa_public_key) {
       throw new Error(
         "RSA public key is required for pre-auth operations. " +
-        "Please provide it when initializing PayWayClient: " +
-        "new PayWayClient(base_url, merchant_id, api_key, rsa_public_key)"
+          "Please provide it when initializing PayWayClient: " +
+          "new PayWayClient(base_url, merchant_id, api_key, rsa_public_key)",
       );
     }
 
+    // Normalize the key to handle formatting issues (e.g., literal \n escape sequences)
+    const normalizedKey = this.normalizePublicKey(this.rsa_public_key);
+
     // Step 1: JSON encode the data
     const jsonData = JSON.stringify(data);
-    
+
     // Step 2: Split into 117-byte chunks and encrypt each
     // RSA with PKCS1 padding (1024-bit key) allows max 117 bytes per chunk
     const maxChunkSize = 117;
     let encryptedOutput = Buffer.alloc(0);
-    
+
     for (let i = 0; i < jsonData.length; i += maxChunkSize) {
       const chunk = jsonData.slice(i, i + maxChunkSize);
-      
-      // Encrypt the chunk using ABA's public key
+
+      // Encrypt the chunk using ABA's public key (normalized)
       const encryptedChunk = publicEncrypt(
         {
-          key: this.rsa_public_key,
+          key: normalizedKey,
           padding: constants.RSA_PKCS1_PADDING,
         },
-        Buffer.from(chunk, 'utf8')
+        Buffer.from(chunk, "utf8"),
       );
-      
+
       // Concatenate encrypted chunks
       encryptedOutput = Buffer.concat([encryptedOutput, encryptedChunk]);
     }
-    
+
     // Step 3: Base64 encode the concatenated encrypted output
-    return encryptedOutput.toString('base64');
+    return encryptedOutput.toString("base64");
   }
 
   /**
@@ -110,11 +180,11 @@ export class PayWayClient {
    */
   private create_payload(
     body: Record<string, any> = {},
-    date: Date = new Date()
+    date: Date = new Date(),
   ): Record<string, string> {
     // Filter out null and undefined values
     body = Object.fromEntries(
-      Object.entries(body).filter(([_k, v]) => v != null)
+      Object.entries(body).filter(([_k, v]) => v != null),
     );
 
     const req_time = format(date, "yyyyMMddHHmmss");
@@ -182,7 +252,7 @@ export class PayWayClient {
    * ```
    */
   buildTransactionPayload(
-    params: CreateTransactionParams = {}
+    params: CreateTransactionParams = {},
   ): PayloadBuilderResponse {
     const {
       tran_id,
@@ -230,7 +300,7 @@ export class PayWayClient {
       processedReturnUrl = base64(return_url);
     }
     let processedReturnDeeplink: string | undefined;
-    
+
     if (return_deeplink != null) {
       processedReturnDeeplink = base64(JSON.stringify(return_deeplink));
     }
@@ -343,7 +413,7 @@ export class PayWayClient {
    * ```
    */
   buildTransactionListPayload(
-    params: TransactionListParams = {}
+    params: TransactionListParams = {},
   ): PayloadBuilderResponse {
     const { from_date, to_date, from_amount, to_amount, status } = params;
 
@@ -365,15 +435,15 @@ export class PayWayClient {
 
   /**
    * Builds a complete pre-auth transaction payload
-   * 
+   *
    * Use this to capture funds from a pre-authorized transaction.
    * The pre-auth must be in valid state (not expired or already completed).
-   * 
+   *
    * For card payments: You can complete with up to 10% more than the original amount.
-   * 
+   *
    * @param params - Complete pre-auth parameters
    * @returns Payload with fields, hash, and URL
-   * 
+   *
    * @example
    * ```typescript
    * // Complete with the authorized amount
@@ -381,37 +451,43 @@ export class PayWayClient {
    *   tran_id: "ORDER-123",
    *   complete_amount: 100  // Required
    * });
-   * 
+   *
    * // Complete with increased amount (+10% allowed for cards)
    * const payload = client.buildCompletePreAuthPayload({
    *   tran_id: "ORDER-123",
    *   complete_amount: 110  // Original was 100, can add up to 10%
    * });
-   * 
+   *
    * // Execute the completion
    * const result = await client.execute(payload);
    * console.log('Status:', result.transaction_status); // "COMPLETED"
    * ```
    */
-  buildCompletePreAuthPayload(params: CompletePreAuthParams): PayloadBuilderResponse {
+  buildCompletePreAuthPayload(
+    params: CompletePreAuthParams,
+  ): PayloadBuilderResponse {
     const { tran_id, complete_amount } = params;
-    
+
     // Prepare data to be encrypted
     const dataToEncrypt = {
       mc_id: this.merchant_id,
       tran_id: tran_id,
       complete_amount: complete_amount,
     };
-    
+
     // Encrypt the data with RSA public key
     const merchant_auth = this.encryptWithRSA(dataToEncrypt);
-    
+
     // Create request time
     const request_time = format(new Date(), "yyyyMMddHHmmss");
-    
+
     // Create HMAC hash: merchant_auth + request_time + merchant_id
-    const hash = this.create_hash([merchant_auth, request_time, this.merchant_id]);
-    
+    const hash = this.create_hash([
+      merchant_auth,
+      request_time,
+      this.merchant_id,
+    ]);
+
     // Build fields
     const fields: Record<string, string> = {
       merchant_auth,
@@ -419,7 +495,7 @@ export class PayWayClient {
       merchant_id: this.merchant_id,
       hash,
     };
-    
+
     return {
       fields,
       hash,
@@ -430,13 +506,13 @@ export class PayWayClient {
 
   /**
    * Builds a complete pre-auth transaction with payout payload
-   * 
+   *
    * Use this to capture funds and distribute them according to payout rules.
    * Useful for marketplace scenarios where funds need to be split.
-   * 
+   *
    * @param params - Complete pre-auth with payout parameters
    * @returns Payload with fields, hash, and URL
-   * 
+   *
    * @example
    * ```typescript
    * const payload = client.buildCompletePreAuthWithPayoutPayload({
@@ -447,13 +523,15 @@ export class PayWayClient {
    *     { acc: "789012", amt: 20 }
    *   ]
    * });
-   * 
+   *
    * const result = await client.execute(payload);
    * ```
    */
-  buildCompletePreAuthWithPayoutPayload(params: CompletePreAuthWithPayoutParams): PayloadBuilderResponse {
+  buildCompletePreAuthWithPayoutPayload(
+    params: CompletePreAuthWithPayoutParams,
+  ): PayloadBuilderResponse {
     const { tran_id, complete_amount, payout } = params;
-    
+
     // Prepare data to be encrypted
     const dataToEncrypt = {
       mc_id: this.merchant_id,
@@ -461,16 +539,20 @@ export class PayWayClient {
       complete_amount: complete_amount,
       payout: payout,
     };
-    
+
     // Encrypt the data with RSA public key
     const merchant_auth = this.encryptWithRSA(dataToEncrypt);
-    
+
     // Create request time
     const request_time = format(new Date(), "yyyyMMddHHmmss");
-    
+
     // Create HMAC hash: merchant_auth + request_time + merchant_id
-    const hash = this.create_hash([merchant_auth, request_time, this.merchant_id]);
-    
+    const hash = this.create_hash([
+      merchant_auth,
+      request_time,
+      this.merchant_id,
+    ]);
+
     // Build fields
     const fields: Record<string, string> = {
       merchant_auth,
@@ -478,7 +560,7 @@ export class PayWayClient {
       merchant_id: this.merchant_id,
       hash,
     };
-    
+
     return {
       fields,
       hash,
@@ -489,41 +571,47 @@ export class PayWayClient {
 
   /**
    * Builds a cancel pre-auth transaction payload
-   * 
+   *
    * Use this to release reserved funds from a pre-authorized transaction.
    * The pre-auth must be in valid state (not expired or already completed/cancelled).
-   * 
+   *
    * @param params - Cancel pre-auth parameters
    * @returns Payload with fields, hash, and URL
-   * 
+   *
    * @example
    * ```typescript
    * const payload = client.buildCancelPreAuthPayload({
    *   tran_id: "ORDER-123"
    * });
-   * 
+   *
    * const result = await client.execute(payload);
    * console.log('Status:', result.transaction_status); // "CANCELLED"
    * ```
    */
-  buildCancelPreAuthPayload(params: CancelPreAuthParams): PayloadBuilderResponse {
+  buildCancelPreAuthPayload(
+    params: CancelPreAuthParams,
+  ): PayloadBuilderResponse {
     const { tran_id } = params;
-    
+
     // Prepare data to be encrypted
     const dataToEncrypt = {
       mc_id: this.merchant_id,
       tran_id: tran_id,
     };
-    
+
     // Encrypt the data with RSA public key
     const merchant_auth = this.encryptWithRSA(dataToEncrypt);
-    
+
     // Create request time
     const request_time = format(new Date(), "yyyyMMddHHmmss");
-    
+
     // Create HMAC hash: merchant_auth + request_time + merchant_id
-    const hash = this.create_hash([merchant_auth, request_time, this.merchant_id]);
-    
+    const hash = this.create_hash([
+      merchant_auth,
+      request_time,
+      this.merchant_id,
+    ]);
+
     // Build fields
     const fields: Record<string, string> = {
       merchant_auth,
@@ -531,7 +619,7 @@ export class PayWayClient {
       merchant_id: this.merchant_id,
       hash,
     };
-    
+
     return {
       fields,
       hash,
@@ -588,7 +676,7 @@ export class PayWayClient {
    */
   async execute(
     payload: PayloadBuilderResponse,
-    options: ExecuteOptions = {}
+    options: ExecuteOptions = {},
   ): Promise<ReturnType | PaywayPaymentStatusCheckResponse | string> {
     const { allowHtml = false } = options;
 
@@ -598,7 +686,7 @@ export class PayWayClient {
         'Cannot execute server-to-server call with payment_option "abapay". ' +
           "ABA PayWay returns HTML for abapay which should be displayed via client-side form submission. " +
           "Use buildTransactionPayload() and create a form in the browser instead. " +
-          "If you really need to get the HTML on the server, pass { allowHtml: true }."
+          "If you really need to get the HTML on the server, pass { allowHtml: true }.",
       );
     }
 
@@ -630,12 +718,12 @@ export class PayWayClient {
 
       // Create detailed error message
       const error: any = new Error(
-        `PayWay API Error: ${response.status} ${response.statusText}`
+        `PayWay API Error: ${response.status} ${response.statusText}`,
       );
       error.status = response.status;
       error.statusText = response.statusText;
       error.body = errorBody;
-      
+
       throw error;
     }
 
@@ -644,7 +732,7 @@ export class PayWayClient {
 
     if (contentType.includes("application/json")) {
       // Expected: JSON response
-      return await response.json() as ReturnType;
+      return (await response.json()) as ReturnType;
     } else if (contentType.includes("text/html")) {
       // HTML response (likely abapay or error page)
       if (!allowHtml) {
@@ -652,19 +740,19 @@ export class PayWayClient {
           "Received HTML response but expected JSON. " +
             'This usually means payment_option "abapay" was used, which returns an HTML checkout page. ' +
             "Use client-side form submission for abapay payments. " +
-            "If you intentionally want the HTML, pass { allowHtml: true }."
+            "If you intentionally want the HTML, pass { allowHtml: true }.",
         );
       }
       return await response.text();
     } else {
       // Unknown content type - try JSON first, then text
       try {
-        return await response.json() as ReturnType;
+        return (await response.json()) as ReturnType;
       } catch {
         if (!allowHtml) {
           throw new Error(
             `Unexpected content-type: ${contentType}. ` +
-              "Response is not JSON and allowHtml is false."
+              "Response is not JSON and allowHtml is false.",
           );
         }
         return await response.text();
