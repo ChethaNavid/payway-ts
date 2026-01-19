@@ -288,7 +288,7 @@ describe("PayWayClient", () => {
       expect(payload.fields).toHaveProperty("hash");
       expect(payload.hash).toBe(payload.fields.hash);
       expect(payload.url).toBe(
-        "https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/check-transaction",
+        "https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/check-transaction-2",
       );
       expect(payload.method).toBe("POST");
     });

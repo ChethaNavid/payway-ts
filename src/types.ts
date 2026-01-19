@@ -20,12 +20,23 @@ export type ReturnType = {
 };
 
 export interface PaywayPaymentStatusCheckResponse {
-  status: number;
-  description?: string;
-  amount: number;
-  total: number;
-  payment_status: number;
-  datetime: string;
+  data: {
+    payment_status_code: number;
+    total_amount: number;
+    original_amount: number;
+    refund_amount: number;
+    discount_amount: number;
+    payment_amount: number;
+    payment_currency: string;
+    apv: string;
+    payment_status: string;
+    transaction_date: string;
+  };
+  status: {
+    code: string;
+    message: string;
+    tran_id: string;
+  };
 }
 
 export type PaymentOption =

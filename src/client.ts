@@ -378,7 +378,7 @@ export class PayWayClient {
     return {
       fields,
       hash: fields.hash,
-      url: `${this.base_url}api/payment-gateway/v1/payments/check-transaction`,
+      url: `${this.base_url}api/payment-gateway/v1/payments/check-transaction-2`,
       method: "POST",
     };
   }
