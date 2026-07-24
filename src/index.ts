@@ -9,7 +9,7 @@
  */
 
 export { PayWayClient } from "./client.js";
-export { trim } from "./utils.js";
+export { trim, formatRequestTime } from "./utils.js";
 export type { ExecuteResult } from "./execute.js";
 export type {
   PayWayConfig,

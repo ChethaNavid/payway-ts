@@ -1,5 +1,5 @@
-import { format } from "date-fns";
 import { createHash, createHashHex, encryptWithRSA } from "../crypto.js";
+import { formatRequestTime } from "../utils.js";
 import type {
   PayWayConfig,
   PayoutParams,
@@ -109,7 +109,7 @@ function buildWhitelistPayload(
   path: string,
 ): PayloadBuilderResponse {
   const merchant_auth = encryptWithRSA(config.rsa_public_key, dataToEncrypt);
-  const request_time = format(new Date(), "yyyyMMddHHmmss");
+  const request_time = formatRequestTime(new Date());
 
   const hash = createHash(config.api_key, [request_time, merchant_auth]);
 

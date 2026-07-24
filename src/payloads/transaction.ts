@@ -1,6 +1,5 @@
-import { format } from "date-fns";
 import { base64, createHash } from "../crypto.js";
-import { trim } from "../utils.js";
+import { formatRequestTime, trim } from "../utils.js";
 import type {
   PayWayConfig,
   CreateTransactionParams,
@@ -36,7 +35,7 @@ function createPayload(
   // Filter out null and undefined values
   body = Object.fromEntries(Object.entries(body).filter(([_k, v]) => v != null));
 
-  const req_time = format(date, "yyyyMMddHHmmss");
+  const req_time = formatRequestTime(date);
   const merchant_id = config.merchant_id;
 
   // Create hash with req_time, merchant_id, and all body values

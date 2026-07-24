@@ -5,7 +5,11 @@ tests/
 # Config files
 tsconfig.json
 tsconfig.build.json
+tsconfig.cjs.json
 vitest.config.ts
+
+# Build tooling
+scripts/
 
 # Development files
 .gitignore

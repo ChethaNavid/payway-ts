@@ -1,17 +1,31 @@
 {
   "name": "payway-ts",
   "version": "0.2.0",
-  "description": "A non-official TypeScript SDK for ABA PayWay",
+  "description": "Unofficial TypeScript SDK for ABA PayWay (ABA Bank Cambodia) — ABA PAY, KHQR, cards, pre-authorization and payout, with HMAC-SHA512 signing. ESM + CommonJS, zero dependencies.",
   "license": "MIT",
   "author": "tykealy",
+  "homepage": "https://github.com/tykealy/payway-ts#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tykealy/payway-ts.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tykealy/payway-ts/issues"
+  },
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
     }
   },
   "files": [
@@ -20,7 +34,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "npm run build:esm && npm run build:cjs && node scripts/write-cjs-package.mjs",
+    "build:esm": "tsc -p tsconfig.build.json",
+    "build:cjs": "tsc -p tsconfig.cjs.json",
     "dev": "tsc -p tsconfig.build.json --watch",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -31,20 +47,33 @@
   "keywords": [
     "aba",
     "payway",
+    "aba-payway",
+    "aba-bank",
+    "ababank",
+    "abapay",
+    "aba-pay",
+    "khqr",
     "payment",
+    "payments",
+    "payment-gateway",
+    "payment-integration",
     "cambodia",
+    "khmer",
+    "riel",
     "typescript",
     "sdk",
-    "aba-bank"
+    "api-client",
+    "payout",
+    "pre-authorization",
+    "nextjs",
+    "nodejs"
   ],
   "engines": {
     "node": ">=18.0.0"
   },
-  "dependencies": {
-    "date-fns": "^2.30.0"
-  },
   "devDependencies": {
     "@types/node": "^25.0.2",
+    "date-fns": "^2.30.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.15"
   }
