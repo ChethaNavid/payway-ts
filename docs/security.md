@@ -76,7 +76,7 @@ export async function GET(request: Request) {
     client.buildCheckTransactionPayload(tranId!)
   );
   
-  if (status.transaction_status === 'APPROVED') {
+  if (status.payment_status === 'APPROVED') {
     // Process order
   }
 }
@@ -183,7 +183,7 @@ export async function POST(request: Request) {
     client.buildCheckTransactionPayload(tranId)
   );
   
-  if (status.transaction_status === 'APPROVED') {
+  if (status.payment_status === 'APPROVED') {
     await fulfillOrder(status.grand_total);
   }
 }
