@@ -47,8 +47,12 @@ const client = new PayWayClient(
 | `buildCompletePreAuthPayload()` | Build pre-auth completion | `PayloadBuilderResponse` |
 | `buildCompletePreAuthWithPayoutPayload()` | Build pre-auth completion with payout | `PayloadBuilderResponse` |
 | `buildCancelPreAuthPayload()` | Build pre-auth cancellation | `PayloadBuilderResponse` |
+| `buildPayoutPayload()` | Build standalone payout | `PayloadBuilderResponse` |
+| `buildAddBeneficiaryPayload()` | Build add beneficiary to whitelist | `PayloadBuilderResponse` |
+| `buildUpdateBeneficiaryStatusPayload()` | Build beneficiary enable/disable | `PayloadBuilderResponse` |
 | `execute()` | Execute a payload (server-to-server) | `Promise<any>` |
-| `create_hash()` | Generate HMAC-SHA512 hash | `string` |
+| `create_hash()` | Generate base64 HMAC-SHA512 hash | `string` |
+| `create_hash_hex()` | Generate hex HMAC-SHA512 hash (payout only) | `string` |
 
 ---
 
@@ -76,6 +80,7 @@ interface CreateTransactionParams {
   email?: string;
   phone?: string;
   pwt?: string;
+  payout?: PayoutItem[] | string;
   type?: "purchase" | "pre-auth";
   view_type?: "hosted_view" | "popup";
 }
@@ -95,6 +100,7 @@ interface CreateTransactionParams {
 | `email` | string | No | Customer email |
 | `phone` | string | No | Customer phone |
 | `pwt` | string | No | PayWay token |
+| `payout` | PayoutItem[] \| string | No | Split & Payout instruction. Arrays are auto base64 encoded; strings pass through. See [Payout](payout.md#step-2b-split--payout). |
 | `type` | "purchase" \| "pre-auth" | No | Transaction type (default: "purchase") |
 | `view_type` | "hosted_view" \| "popup" | No | Payment page display mode (NOT in hash) |
 
@@ -379,6 +385,166 @@ console.log(result.transaction_status); // "CANCELLED"
 
 ---
 
+## buildPayoutPayload()
+
+Build a standalone payout payload. Debits your **settlement account** and credits whitelisted beneficiaries, independent of any customer transaction.
+
+To split the funds of a purchase you are collecting instead, use the `payout` parameter of [`buildTransactionPayload()`](#buildtransactionpayload).
+
+```typescript
+buildPayoutPayload(params: PayoutParams): PayloadBuilderResponse
+```
+
+### Parameters
+
+```typescript
+interface PayoutParams {
+  tran_id: string;
+  beneficiaries: PayoutBeneficiary[];
+  amount: number | string;
+  currency: "USD" | "KHR";
+  custom_fields?: string | Record<string, unknown>;
+}
+
+interface PayoutBeneficiary {
+  account: string;
+  amount: number;
+}
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `tran_id` | string | **Yes** | Unique payout transaction ID (max 20 characters) |
+| `beneficiaries` | PayoutBeneficiary[] | **Yes** | Accounts to credit, maximum 10 per request |
+| `amount` | number \| string | **Yes** | Total payout amount, must equal the sum of beneficiary amounts |
+| `currency` | "USD" \| "KHR" | **Yes** | Transaction currency |
+| `custom_fields` | string \| object | No | Metadata. Objects are JSON encoded. Max 255 characters serialized. |
+
+Note the beneficiary keys are `account` / `amount` here, while the Split & Payout instruction on `buildTransactionPayload()` uses `acc` / `amt`. This mirrors the PayWay API.
+
+### Requirements
+
+- RSA public key must be provided in the constructor
+- All beneficiaries must be whitelisted and active, otherwise the payout fails with code `37`
+- All beneficiaries must share the transaction currency
+- Minimum 0.01 USD or 100 KHR
+- Your settlement account must have sufficient balance (code `93`)
+
+### Returns
+
+`PayloadBuilderResponse` with `contentType: "application/json"` and a `body` object holding native types (`amount` stays a number).
+
+### Example
+
+```typescript
+const payload = client.buildPayoutPayload({
+  tran_id: "PAYOUT-123",
+  beneficiaries: [
+    { account: "200030000", amount: 1.72 },
+    { account: "012538302", amount: 1.72 }
+  ],
+  amount: 3.44,
+  currency: "USD"
+});
+
+const result = await client.execute(payload);
+
+if (result.status.code === "0") {
+  console.log(result.transaction_id);
+  console.log(result.external_reference);
+} else {
+  // trace_id is what ABA support needs to investigate
+  console.error(result.status.code, result.status.message, result.status.trace_id);
+}
+```
+
+See [Payout: standalone status codes](payout.md#standalone-payout-status-codes) for the full code list. The purchase endpoint returns a [different set of payout codes](payout.md#split--payout-status-codes) — notably `82` means something different on each.
+
+---
+
+## buildAddBeneficiaryPayload()
+
+Build a payload to add a beneficiary to the payout whitelist. Beneficiaries must be whitelisted before they can receive funds through either payout flow, and are **active immediately** once added.
+
+```typescript
+buildAddBeneficiaryPayload(params: AddBeneficiaryParams): PayloadBuilderResponse
+```
+
+### Parameters
+
+```typescript
+interface AddBeneficiaryParams {
+  payee: string;
+}
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `payee` | string | **Yes** | ABA account number or merchant MID |
+
+### Requirements
+
+- RSA public key must be provided in the constructor
+- The payee's currency must match your merchant currency (code `PTL147`)
+
+### Example
+
+```typescript
+const payload = client.buildAddBeneficiaryPayload({
+  payee: "318111358120004"
+});
+
+const result = await client.execute(payload);
+console.log(result.data.name);     // Outlet name or account holder name
+console.log(result.data.type);     // "Merchant" or "ABA Account"
+console.log(result.data.status);   // 1 (active)
+```
+
+---
+
+## buildUpdateBeneficiaryStatusPayload()
+
+Build a payload to enable or disable a whitelisted beneficiary. Payouts referencing a disabled beneficiary fail with code `37`.
+
+```typescript
+buildUpdateBeneficiaryStatusPayload(
+  params: UpdateBeneficiaryStatusParams
+): PayloadBuilderResponse
+```
+
+### Parameters
+
+```typescript
+interface UpdateBeneficiaryStatusParams {
+  payee: string;
+  status: 0 | 1;
+}
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `payee` | string | **Yes** | ABA account number or merchant MID |
+| `status` | 0 \| 1 | **Yes** | `1` to activate, `0` to disable |
+
+### Requirements
+
+- RSA public key must be provided in the constructor
+- The payee must already be whitelisted (code `PTL149`)
+
+### Example
+
+```typescript
+const payload = client.buildUpdateBeneficiaryStatusPayload({
+  payee: "318111358120004",
+  status: 0
+});
+
+const result = await client.execute(payload);
+console.log(result.data.status); // 0 (inactive)
+```
+
+---
+
 ## execute()
 
 Execute a payload with server-to-server HTTP request to ABA PayWay API.
@@ -476,6 +642,46 @@ const hash = client.create_hash(['value1', 'value2', 'value3']);
 
 ---
 
+## create_hash_hex()
+
+Same HMAC-SHA512 digest as [`create_hash()`](#create_hash), hex encoded instead of base64. Used internally by `buildPayoutPayload()`.
+
+```typescript
+create_hash_hex(parts: string[]): string
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `parts` | string[] | **Yes** | Array of strings to hash |
+
+### Returns
+
+Lowercase hex encoded HMAC-SHA512 hash (128 characters)
+
+### Why two hash methods
+
+The Payout API is the only PayWay endpoint that expects a hex digest — everything else, including the beneficiary whitelist endpoints, expects base64. The hash inputs differ too:
+
+| Endpoint group | Hash input | Encoding |
+|---|---|---|
+| Purchase, check, list | `req_time` + `merchant_id` + body values | base64 |
+| Pre-auth | `merchant_auth` + `request_time` + `merchant_id` | base64 |
+| Beneficiary whitelist | `request_time` + `merchant_auth` | base64 |
+| Payout | `merchant_id` + `tran_id` + `beneficiaries` + `amount` + `custom_fields` + `currency` | **hex** |
+
+Note the payout hash order is not the request body's field order: `custom_fields` is hashed before `currency` but sent after it, and contributes an empty string when omitted.
+
+### Example
+
+```typescript
+const hash = client.create_hash_hex(['value1', 'value2', 'value3']);
+// Returns: "128-character-hex-string"
+```
+
+---
+
 ## TypeScript Types
 
 ### Core Types
@@ -492,7 +698,14 @@ import type {
   ExecuteOptions,
   PaymentOption,
   TransactionStatus,
-  PayWayAPIError
+  PayWayAPIError,
+  PayoutItem,
+  PayoutBeneficiary,
+  PayoutParams,
+  PayoutResponse,
+  AddBeneficiaryParams,
+  UpdateBeneficiaryStatusParams,
+  BeneficiaryResponse
 } from 'payway-ts';
 ```
 
@@ -504,7 +717,28 @@ interface PayloadBuilderResponse {
   hash: string;
   url: string;
   method: "POST";
+  body?: Record<string, unknown>;
+  contentType?: "multipart/form-data" | "application/json";
 }
+```
+
+| Field | Description |
+|-------|-------------|
+| `fields` | All request fields as strings, including `hash`. Use these to build an HTML form. |
+| `hash` | The signature, also present in `fields` |
+| `url` | Full URL to submit to |
+| `method` | Always `"POST"` |
+| `body` | Request body with values in native types. Present only for JSON endpoints. |
+| `contentType` | Defaults to `"multipart/form-data"` when absent. `"application/json"` for the payout and beneficiary whitelist endpoints. |
+
+`execute()` handles both content types for you. If you make the request yourself, send `body` rather than `fields` for JSON endpoints — the payout `amount` must stay a number:
+
+```typescript
+await fetch(payload.url, {
+  method: payload.method,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(payload.body)
+});
 ```
 
 ### PayWayAPIError
@@ -540,5 +774,6 @@ trim(123);           // 123
 ## Next Steps
 
 - [Learn about error handling](error-handling.md)
+- [Distribute funds with Payout](payout.md)
 - [Review security best practices](security.md)
 - [See integration examples](client-side-form-submission.md)

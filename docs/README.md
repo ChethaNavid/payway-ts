@@ -13,6 +13,7 @@ Welcome to the payway-ts documentation! This guide will help you integrate ABA P
 
 ### Advanced Features
 - [Pre-Authorization](pre-authorization.md) - Two-step payment process: reserve funds first, capture later
+- [Payout](payout.md) - Distribute funds to beneficiaries, either split from a purchase or standalone
 
 ### Reference
 - [API Reference](api-reference.md) - Complete documentation of all methods, parameters, and types
@@ -27,7 +28,9 @@ Welcome to the payway-ts documentation! This guide will help you integrate ABA P
 - **Check transaction status** → [Server-to-Server: Check Status](server-to-server.md#check-transaction-status)
 - **List transactions** → [Server-to-Server: List Transactions](server-to-server.md#list-transactions)
 - **Reserve funds first, charge later** → [Pre-Authorization](pre-authorization.md)
-- **Split payments to multiple accounts** → [Pre-Authorization: Complete with Payout](pre-authorization.md#complete-with-payout)
+- **Split a purchase across multiple accounts** → [Payout: Split & Payout](payout.md#step-2b-split--payout)
+- **Send funds from my settlement account** → [Payout: Standalone Payout](payout.md#step-2a-standalone-payout)
+- **Whitelist a beneficiary** → [Payout: Whitelist the beneficiary](payout.md#step-1-whitelist-the-beneficiary)
 - **See all available methods** → [API Reference](api-reference.md)
 
 ### I'm using...

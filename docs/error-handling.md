@@ -92,7 +92,7 @@ try {
 
 ### 1. Missing RSA Public Key
 
-Pre-auth operations require an RSA public key.
+Pre-auth and payout operations require an RSA public key.
 
 ```typescript
 try {
@@ -332,7 +332,7 @@ const client = new PayWayClient(url, id, key); // No RSA key
 await client.execute(
   client.buildCompletePreAuthPayload({ ... })
 );
-// Error: RSA public key is required for pre-authorization operations
+// Error: RSA public key is required for pre-auth and payout operations
 ```
 
 ## Debugging Tips

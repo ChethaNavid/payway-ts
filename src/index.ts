@@ -10,7 +10,9 @@
 
 export { PayWayClient } from "./client.js";
 export { trim } from "./utils.js";
+export type { ExecuteResult } from "./execute.js";
 export type {
+  PayWayConfig,
   TransactionStatus,
   PaymentOption,
   ViewType,
@@ -26,5 +28,11 @@ export type {
   PreAuthResponse,
   PayWayAPIError,
   ReturnType,
-  PaywayPaymentStatusCheckResponse
+  PaywayPaymentStatusCheckResponse,
+  PayoutBeneficiary,
+  PayoutParams,
+  PayoutResponse,
+  AddBeneficiaryParams,
+  UpdateBeneficiaryStatusParams,
+  BeneficiaryResponse
 } from "./types.js";

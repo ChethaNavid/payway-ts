@@ -1,7 +1,22 @@
-import { format } from "date-fns";
-import { createHmac, publicEncrypt, constants } from "node:crypto";
-import { trim } from "./utils.js";
+import { createHash, createHashHex } from "./crypto.js";
+import { execute, type ExecuteResult } from "./execute.js";
+import {
+  buildTransactionPayload,
+  buildCheckTransactionPayload,
+  buildTransactionListPayload,
+} from "./payloads/transaction.js";
+import {
+  buildCompletePreAuthPayload,
+  buildCompletePreAuthWithPayoutPayload,
+  buildCancelPreAuthPayload,
+} from "./payloads/pre-auth.js";
+import {
+  buildPayoutPayload,
+  buildAddBeneficiaryPayload,
+  buildUpdateBeneficiaryStatusPayload,
+} from "./payloads/payout.js";
 import type {
+  PayWayConfig,
   CreateTransactionParams,
   TransactionListParams,
   PayloadBuilderResponse,
@@ -9,8 +24,9 @@ import type {
   CompletePreAuthParams,
   CompletePreAuthWithPayoutParams,
   CancelPreAuthParams,
-  ReturnType,
-  PaywayPaymentStatusCheckResponse,
+  PayoutParams,
+  AddBeneficiaryParams,
+  UpdateBeneficiaryStatusParams,
 } from "./types.js";
 
 /**
@@ -21,9 +37,13 @@ import type {
  * 1. Create an HTML form on the client-side, OR
  * 2. Make server-to-server API calls
  *
+ * The class is a facade over the payload builders in `payloads/`, which are
+ * plain functions taking a {@link PayWayConfig}. `PayWayClient` satisfies that
+ * interface, so it passes itself straight through.
+ *
  * @class PayWayClient
  */
-export class PayWayClient {
+export class PayWayClient implements PayWayConfig {
   public readonly base_url: string;
   public readonly merchant_id: string;
   public readonly api_key: string;
@@ -54,164 +74,20 @@ export class PayWayClient {
    * @returns Base64 encoded hash
    */
   create_hash(values: string[]): string {
-    const data = values.join("");
-    return createHmac("sha512", this.api_key).update(data).digest("base64");
+    return createHash(this.api_key, values);
   }
 
   /**
-   * Normalizes RSA public key to proper PEM format
+   * Creates a hex-encoded HMAC-SHA512 hash for request signing
    *
-   * Handles common formatting issues:
-   * - Literal \n escape sequences (from copy-paste or database storage)
-   * - Missing or incorrect line breaks
-   * - Extra whitespace
+   * Only the Payout API expects a hex digest - every other PayWay endpoint
+   * expects the base64 digest produced by {@link create_hash}.
    *
-   * @param key - RSA public key string (may be malformed)
-   * @returns Properly formatted PEM key
-   * @throws Error if key is missing required markers
-   * @private
+   * @param values - Array of strings to hash
+   * @returns Lowercase hex encoded hash (128 characters)
    */
-  private normalizePublicKey(key: string): string {
-    // Remove extra whitespace
-    let normalized = key.trim();
-
-    // Replace literal \n with actual newlines
-    normalized = normalized.replace(/\\n/g, "\n");
-
-    // Ensure proper header/footer
-    if (!normalized.includes("-----BEGIN")) {
-      throw new Error(
-        "Invalid RSA public key: missing BEGIN marker. " +
-          'Key must start with "-----BEGIN PUBLIC KEY-----" or "-----BEGIN RSA PUBLIC KEY-----"',
-      );
-    }
-    if (!normalized.includes("-----END")) {
-      throw new Error(
-        "Invalid RSA public key: missing END marker. " +
-          'Key must end with "-----END PUBLIC KEY-----" or "-----END RSA PUBLIC KEY-----"',
-      );
-    }
-
-    // Extract key content between BEGIN and END markers and rebuild properly
-    const beginMatch = normalized.match(/-----BEGIN[^-]+-----/);
-    const endMatch = normalized.match(/-----END[^-]+-----/);
-
-    if (beginMatch && endMatch) {
-      const beginMarker = beginMatch[0];
-      const endMarker = endMatch[0];
-
-      // Extract content between markers and remove all whitespace
-      const startIdx = normalized.indexOf(beginMarker) + beginMarker.length;
-      const endIdx = normalized.indexOf(endMarker);
-      const keyContent = normalized
-        .substring(startIdx, endIdx)
-        .replace(/\s/g, "");
-
-      // Split into 64-character lines (standard PEM format)
-      const formattedLines = [];
-      for (let i = 0; i < keyContent.length; i += 64) {
-        formattedLines.push(keyContent.slice(i, i + 64));
-      }
-
-      // Rebuild key with proper formatting
-      normalized = `${beginMarker}\n${formattedLines.join("\n")}\n${endMarker}`;
-    }
-
-    return normalized;
-  }
-
-  /**
-   * Encrypts data with RSA public key in 117-byte chunks
-   *
-   * Used for pre-auth operations where sensitive data (mc_id, tran_id, complete_amount)
-   * must be encrypted using ABA Bank's RSA public key.
-   *
-   * @param data - Object to encrypt (will be JSON encoded)
-   * @returns Base64 encoded encrypted data
-   * @throws Error if RSA public key is not configured
-   * @private
-   */
-  private encryptWithRSA(data: Record<string, any>): string {
-    if (!this.rsa_public_key) {
-      throw new Error(
-        "RSA public key is required for pre-auth operations. " +
-          "Please provide it when initializing PayWayClient: " +
-          "new PayWayClient(base_url, merchant_id, api_key, rsa_public_key)",
-      );
-    }
-
-    // Normalize the key to handle formatting issues (e.g., literal \n escape sequences)
-    const normalizedKey = this.normalizePublicKey(this.rsa_public_key);
-
-    // Step 1: JSON encode the data
-    const jsonData = JSON.stringify(data);
-
-    // Step 2: Split into 117-byte chunks and encrypt each
-    // RSA with PKCS1 padding (1024-bit key) allows max 117 bytes per chunk
-    const maxChunkSize = 117;
-    let encryptedOutput = Buffer.alloc(0);
-
-    for (let i = 0; i < jsonData.length; i += maxChunkSize) {
-      const chunk = jsonData.slice(i, i + maxChunkSize);
-
-      // Encrypt the chunk using ABA's public key (normalized)
-      const encryptedChunk = publicEncrypt(
-        {
-          key: normalizedKey,
-          padding: constants.RSA_PKCS1_PADDING,
-        },
-        Buffer.from(chunk, "utf8"),
-      );
-
-      // Concatenate encrypted chunks
-      encryptedOutput = Buffer.concat([encryptedOutput, encryptedChunk]);
-    }
-
-    // Step 3: Base64 encode the concatenated encrypted output
-    return encryptedOutput.toString("base64");
-  }
-
-  /**
-   * Creates payload fields with hash signature
-   * @param body - Request body parameters
-   * @param date - Date for the request (defaults to current date)
-   * @returns Plain object with all fields including hash
-   * @private
-   */
-  private create_payload(
-    body: Record<string, any> = {},
-    date: Date = new Date(),
-  ): Record<string, string> {
-    // Filter out null and undefined values
-    body = Object.fromEntries(
-      Object.entries(body).filter(([_k, v]) => v != null),
-    );
-
-    const req_time = format(date, "yyyyMMddHHmmss");
-    const merchant_id = this.merchant_id;
-
-    // Create hash with req_time, merchant_id, and all body values
-    const hash = this.create_hash([
-      req_time,
-      merchant_id,
-      ...Object.values(body).map(String),
-    ]);
-
-    // Build fields object
-    const fields: Record<string, string> = {
-      req_time,
-      merchant_id,
-    };
-
-    // Add all body fields as strings
-    for (const [key, value] of Object.entries(body)) {
-      fields[key] = String(value);
-    }
-
-    // Add hash at the end
-    fields.hash = hash;
-
-    return fields;
+  create_hash_hex(values: string[]): string {
+    return createHashHex(this.api_key, values);
   }
 
   /**
@@ -254,97 +130,7 @@ export class PayWayClient {
   buildTransactionPayload(
     params: CreateTransactionParams = {},
   ): PayloadBuilderResponse {
-    const {
-      tran_id,
-      payment_option,
-      amount,
-      currency,
-      return_url,
-      return_deeplink,
-      continue_success_url,
-      firstname,
-      lastname,
-      email,
-      phone,
-      view_type,
-      type,
-      lifetime,
-      google_play_token,
-      items,
-      shipping,
-      cancel_url,
-      skip_success_page,
-      custom_fields,
-      return_params,
-      payment_gate,
-      payout,
-      additional_params,
-    } = params;
-
-    function base64(d: string): string {
-      return Buffer.from(d).toString("base64");
-    }
-
-    let processedReturnUrl = return_url;
-    let processedCancelUrl = cancel_url;
-    let processedContinueSuccessUrl = continue_success_url;
-    if (typeof continue_success_url === "string") {
-      processedContinueSuccessUrl = base64(continue_success_url);
-    }
-
-    if (typeof cancel_url === "string") {
-      processedCancelUrl = base64(cancel_url);
-    }
-
-    if (typeof return_url === "string") {
-      processedReturnUrl = base64(return_url);
-    }
-    let processedReturnDeeplink: string | undefined;
-
-    if (return_deeplink != null) {
-      processedReturnDeeplink = base64(JSON.stringify(return_deeplink));
-    }
-
-    // Build payload fields (order matters for hash generation)
-    const fields = this.create_payload({
-      tran_id,
-      amount,
-      items,
-      shipping,
-      firstname: trim(firstname),
-      lastname: trim(lastname),
-      email: trim(email),
-      phone: trim(phone),
-      type,
-      payment_option,
-      return_url: processedReturnUrl,
-      cancel_url: processedCancelUrl,
-      continue_success_url: processedContinueSuccessUrl,
-      return_deeplink: processedReturnDeeplink,
-      currency,
-      custom_fields,
-      return_params,
-      payout,
-      lifetime,
-      additional_params,
-      google_play_token,
-      skip_success_page,
-    });
-
-    // Add view_type AFTER hash generation (not included in hash)
-    if (view_type != null) {
-      fields.view_type = view_type;
-    }
-    if (type != null) {
-      fields.type = type;
-    }
-
-    return {
-      fields,
-      hash: fields.hash,
-      url: `${this.base_url}api/payment-gateway/v1/payments/purchase`,
-      method: "POST",
-    };
+    return buildTransactionPayload(this, params);
   }
 
   /**
@@ -373,14 +159,7 @@ export class PayWayClient {
    * ```
    */
   buildCheckTransactionPayload(tran_id: string): PayloadBuilderResponse {
-    const fields = this.create_payload({ tran_id });
-
-    return {
-      fields,
-      hash: fields.hash,
-      url: `${this.base_url}api/payment-gateway/v1/payments/check-transaction-2`,
-      method: "POST",
-    };
+    return buildCheckTransactionPayload(this, tran_id);
   }
 
   /**
@@ -415,22 +194,7 @@ export class PayWayClient {
   buildTransactionListPayload(
     params: TransactionListParams = {},
   ): PayloadBuilderResponse {
-    const { from_date, to_date, from_amount, to_amount, status } = params;
-
-    const fields = this.create_payload({
-      from_date,
-      to_date,
-      from_amount,
-      to_amount,
-      status,
-    });
-
-    return {
-      fields,
-      hash: fields.hash,
-      url: `${this.base_url}api/payment-gateway/v1/payments/transaction-list`,
-      method: "POST",
-    };
+    return buildTransactionListPayload(this, params);
   }
 
   /**
@@ -466,42 +230,7 @@ export class PayWayClient {
   buildCompletePreAuthPayload(
     params: CompletePreAuthParams,
   ): PayloadBuilderResponse {
-    const { tran_id, complete_amount } = params;
-
-    // Prepare data to be encrypted
-    const dataToEncrypt = {
-      mc_id: this.merchant_id,
-      tran_id: tran_id,
-      complete_amount: complete_amount,
-    };
-
-    // Encrypt the data with RSA public key
-    const merchant_auth = this.encryptWithRSA(dataToEncrypt);
-
-    // Create request time
-    const request_time = format(new Date(), "yyyyMMddHHmmss");
-
-    // Create HMAC hash: merchant_auth + request_time + merchant_id
-    const hash = this.create_hash([
-      merchant_auth,
-      request_time,
-      this.merchant_id,
-    ]);
-
-    // Build fields
-    const fields: Record<string, string> = {
-      merchant_auth,
-      request_time,
-      merchant_id: this.merchant_id,
-      hash,
-    };
-
-    return {
-      fields,
-      hash,
-      url: `${this.base_url}api/merchant-portal/merchant-access/online-transaction/pre-auth-completion`,
-      method: "POST",
-    };
+    return buildCompletePreAuthPayload(this, params);
   }
 
   /**
@@ -530,43 +259,7 @@ export class PayWayClient {
   buildCompletePreAuthWithPayoutPayload(
     params: CompletePreAuthWithPayoutParams,
   ): PayloadBuilderResponse {
-    const { tran_id, complete_amount, payout } = params;
-
-    // Prepare data to be encrypted
-    const dataToEncrypt = {
-      mc_id: this.merchant_id,
-      tran_id: tran_id,
-      complete_amount: complete_amount,
-      payout: payout,
-    };
-
-    // Encrypt the data with RSA public key
-    const merchant_auth = this.encryptWithRSA(dataToEncrypt);
-
-    // Create request time
-    const request_time = format(new Date(), "yyyyMMddHHmmss");
-
-    // Create HMAC hash: merchant_auth + request_time + merchant_id
-    const hash = this.create_hash([
-      merchant_auth,
-      request_time,
-      this.merchant_id,
-    ]);
-
-    // Build fields
-    const fields: Record<string, string> = {
-      merchant_auth,
-      request_time,
-      merchant_id: this.merchant_id,
-      hash,
-    };
-
-    return {
-      fields,
-      hash,
-      url: `${this.base_url}api/merchant-portal/merchant-access/online-transaction/pre-auth-completion-with-payout`,
-      method: "POST",
-    };
+    return buildCompletePreAuthWithPayoutPayload(this, params);
   }
 
   /**
@@ -591,41 +284,99 @@ export class PayWayClient {
   buildCancelPreAuthPayload(
     params: CancelPreAuthParams,
   ): PayloadBuilderResponse {
-    const { tran_id } = params;
+    return buildCancelPreAuthPayload(this, params);
+  }
 
-    // Prepare data to be encrypted
-    const dataToEncrypt = {
-      mc_id: this.merchant_id,
-      tran_id: tran_id,
-    };
+  /**
+   * Builds a standalone payout payload
+   *
+   * Distributes funds from your settlement account to whitelisted beneficiaries.
+   * This is independent of any customer purchase - use the `payout` parameter of
+   * buildTransactionPayload() instead if you want to split the funds of a
+   * transaction you are collecting.
+   *
+   * Every beneficiary must be whitelisted first via buildAddBeneficiaryPayload(),
+   * otherwise the payout is rejected with status code 37.
+   *
+   * @param params - Payout parameters
+   * @returns Payload with fields, JSON body, hash, and URL
+   * @throws Error if RSA public key is not configured
+   *
+   * @example
+   * ```typescript
+   * const payload = client.buildPayoutPayload({
+   *   tran_id: "PAYOUT-123",
+   *   beneficiaries: [
+   *     { account: "200030000", amount: 1.72 },
+   *     { account: "012538302", amount: 1.72 }
+   *   ],
+   *   amount: 3.44,
+   *   currency: "USD"
+   * });
+   *
+   * const result = await client.execute(payload);
+   * console.log('Code:', result.status.code); // "0" on success
+   * ```
+   */
+  buildPayoutPayload(params: PayoutParams): PayloadBuilderResponse {
+    return buildPayoutPayload(this, params);
+  }
 
-    // Encrypt the data with RSA public key
-    const merchant_auth = this.encryptWithRSA(dataToEncrypt);
+  /**
+   * Builds an add beneficiary to whitelist payload
+   *
+   * A beneficiary must be whitelisted before it can receive a payout, whether
+   * through the standalone Payout API or a Split & Payout instruction.
+   * Newly added beneficiaries are active immediately.
+   *
+   * @param params - Beneficiary parameters
+   * @returns Payload with fields, JSON body, hash, and URL
+   * @throws Error if RSA public key is not configured
+   *
+   * @example
+   * ```typescript
+   * const payload = client.buildAddBeneficiaryPayload({
+   *   payee: "318111358120004" // ABA account number or merchant MID
+   * });
+   *
+   * const result = await client.execute(payload);
+   * console.log('Type:', result.data.type);     // "Merchant" or "ABA Account"
+   * console.log('Status:', result.data.status); // 1 (active)
+   * ```
+   */
+  buildAddBeneficiaryPayload(
+    params: AddBeneficiaryParams,
+  ): PayloadBuilderResponse {
+    return buildAddBeneficiaryPayload(this, params);
+  }
 
-    // Create request time
-    const request_time = format(new Date(), "yyyyMMddHHmmss");
-
-    // Create HMAC hash: merchant_auth + request_time + merchant_id
-    const hash = this.create_hash([
-      merchant_auth,
-      request_time,
-      this.merchant_id,
-    ]);
-
-    // Build fields
-    const fields: Record<string, string> = {
-      merchant_auth,
-      request_time,
-      merchant_id: this.merchant_id,
-      hash,
-    };
-
-    return {
-      fields,
-      hash,
-      url: `${this.base_url}api/merchant-portal/merchant-access/online-transaction/pre-auth-cancellation`,
-      method: "POST",
-    };
+  /**
+   * Builds an update beneficiary status payload
+   *
+   * Use this to stop a whitelisted beneficiary from receiving further funds, or
+   * to resume a previously disabled one. A disabled beneficiary makes payouts
+   * that reference it fail with status code 37.
+   *
+   * @param params - Beneficiary and target status
+   * @returns Payload with fields, JSON body, hash, and URL
+   * @throws Error if RSA public key is not configured
+   *
+   * @example
+   * ```typescript
+   * // Disable a beneficiary
+   * const payload = client.buildUpdateBeneficiaryStatusPayload({
+   *   payee: "318111358120004",
+   *   status: 0
+   * });
+   *
+   * const result = await client.execute(payload);
+   * console.log('Status:', result.data.status); // 0 (inactive)
+   * ```
+   */
+  buildUpdateBeneficiaryStatusPayload(
+    params: UpdateBeneficiaryStatusParams,
+  ): PayloadBuilderResponse {
+    return buildUpdateBeneficiaryStatusPayload(this, params);
   }
 
   /**
@@ -677,86 +428,7 @@ export class PayWayClient {
   async execute(
     payload: PayloadBuilderResponse,
     options: ExecuteOptions = {},
-  ): Promise<ReturnType | PaywayPaymentStatusCheckResponse | string> {
-    const { allowHtml = false } = options;
-
-    // Validation: Prevent accidental abapay server-to-server calls
-    if (payload.fields.payment_option === "abapay" && !allowHtml) {
-      throw new Error(
-        'Cannot execute server-to-server call with payment_option "abapay". ' +
-          "ABA PayWay returns HTML for abapay which should be displayed via client-side form submission. " +
-          "Use buildTransactionPayload() and create a form in the browser instead. " +
-          "If you really need to get the HTML on the server, pass { allowHtml: true }.",
-      );
-    }
-
-    // Build FormData from fields
-    const formData = new FormData();
-    for (const [key, value] of Object.entries(payload.fields)) {
-      formData.append(key, value);
-    }
-
-    // Make request to ABA PayWay
-    const response = await fetch(payload.url, {
-      method: payload.method,
-      body: formData,
-    });
-
-    if (!response.ok) {
-      // Try to get error details from response body
-      let errorBody: any;
-      try {
-        const contentType = response.headers.get("content-type") || "";
-        if (contentType.includes("application/json")) {
-          errorBody = await response.json();
-        } else {
-          errorBody = await response.text();
-        }
-      } catch {
-        errorBody = null;
-      }
-
-      // Create detailed error message
-      const error: any = new Error(
-        `PayWay API Error: ${response.status} ${response.statusText}`,
-      );
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.body = errorBody;
-
-      throw error;
-    }
-
-    // Parse response based on Content-Type
-    const contentType = response.headers.get("content-type") || "";
-
-    if (contentType.includes("application/json")) {
-      // Expected: JSON response
-      return (await response.json()) as ReturnType;
-    } else if (contentType.includes("text/html")) {
-      // HTML response (likely abapay or error page)
-      if (!allowHtml) {
-        throw new Error(
-          "Received HTML response but expected JSON. " +
-            'This usually means payment_option "abapay" was used, which returns an HTML checkout page. ' +
-            "Use client-side form submission for abapay payments. " +
-            "If you intentionally want the HTML, pass { allowHtml: true }.",
-        );
-      }
-      return await response.text();
-    } else {
-      // Unknown content type - try JSON first, then text
-      try {
-        return (await response.json()) as ReturnType;
-      } catch {
-        if (!allowHtml) {
-          throw new Error(
-            `Unexpected content-type: ${contentType}. ` +
-              "Response is not JSON and allowHtml is false.",
-          );
-        }
-        return await response.text();
-      }
-    }
+  ): Promise<ExecuteResult> {
+    return execute(payload, options);
   }
 }
