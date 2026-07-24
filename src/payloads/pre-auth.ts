@@ -1,5 +1,5 @@
-import { format } from "date-fns";
 import { createHash, encryptWithRSA } from "../crypto.js";
+import { formatRequestTime } from "../utils.js";
 import type {
   PayWayConfig,
   CompletePreAuthParams,
@@ -34,7 +34,7 @@ function buildPreAuthPayload(
   const merchant_auth = encryptWithRSA(config.rsa_public_key, dataToEncrypt);
 
   // Create request time
-  const request_time = format(new Date(), "yyyyMMddHHmmss");
+  const request_time = formatRequestTime(new Date());
 
   // Create HMAC hash: merchant_auth + request_time + merchant_id
   const hash = createHash(config.api_key, [
