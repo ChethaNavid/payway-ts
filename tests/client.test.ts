@@ -601,7 +601,7 @@ WHERcKgSSPtFC7ZTrQIDAQAB
           complete_amount: 100,
           payout: [{ acc: "123456", amt: 100 }],
         });
-      }).toThrow("RSA public key is required for pre-auth operations");
+      }).toThrow("RSA public key is required for pre-auth and payout operations");
     });
 
     it("should include payout array in encrypted data", () => {

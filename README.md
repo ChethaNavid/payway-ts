@@ -19,6 +19,7 @@ This package is built upon and inspired by the excellent work of **[Seanghay Yat
 
 - Full TypeScript support with comprehensive type definitions
 - **Pre-Authorization transactions** (complete, cancel, with payout)
+- **Payout** (standalone payouts, Split & Payout, beneficiary whitelist)
 - **RSA encryption** for sensitive operations
 - Dual integration patterns (payload builder + execute)
 - Enhanced error handling with detailed API responses
@@ -37,6 +38,7 @@ Special thanks to the original contributors for laying the foundation!
 ### New Features in payway-ts
 - **Full TypeScript Support** - Complete type definitions with autocomplete
 - **Pre-Authorization Transactions** - Complete, cancel, and payout support with RSA encryption
+- **Payout** - Distribute funds to beneficiaries, either split from a purchase or standalone from your settlement account, with beneficiary whitelist management
 - **Dual Integration Modes** - Client-side form submission OR server-to-server API calls
 - **Enhanced Error Handling** - Detailed API error responses with status codes and bodies
 - **RSA Encryption** - Secure data encryption for sensitive operations (117-byte chunking)
@@ -51,6 +53,45 @@ Special thanks to the original contributors for laying the foundation!
 ```bash
 npm install payway-ts
 ```
+
+## Upgrading from 0.1.x
+
+**0.2.0 adds Payout** — standalone payouts, Split & Payout on purchases, and beneficiary whitelist management. See the [Payout guide](docs/payout.md).
+
+Runtime behavior is unchanged and no method was removed or renamed, so most projects upgrade with no edits. Two type-level changes can affect a strict `tsc` build:
+
+**1. `execute()` can now also return `PayoutResponse | BeneficiaryResponse.`** Properties that exist on only some members of that union no longer type-check directly. In practice this is `status.tran_id`, which `BeneficiaryResponse` does not have:
+
+```typescript
+const result = await client.execute(payload);
+
+// Before 0.2.0 this compiled; now it errors
+if (typeof result !== 'string') result.status.tran_id;
+
+// Fix 1: narrow first
+if (typeof result !== 'string' && 'tran_id' in result.status) {
+  result.status.tran_id;
+}
+
+// Fix 2: cast to the response you expect (what most code already does)
+const status = await client.execute(
+  client.buildCheckTransactionPayload('ORDER-123')
+) as PaywayPaymentStatusCheckResponse;
+```
+
+`status.code` and `status.message` exist on every member and are unaffected.
+
+**2. The missing-RSA-key error message changed** to mention payout:
+
+```typescript
+// Before: "RSA public key is required for pre-auth operations. ..."
+// Now:    "RSA public key is required for pre-auth and payout operations. ..."
+
+// Match on the stable prefix rather than the full string
+if (error.message.includes('RSA public key is required')) { /* ... */ }
+```
+
+Everything else is additive: `payout` on `buildTransactionPayload()` now accepts an array as well as a base64 string, `PayloadBuilderResponse` gained the optional `body` and `contentType` fields, and the new payout methods and types are new names.
 
 ## Requirements
 
@@ -143,6 +184,36 @@ const transactions = await client.execute(
 
 **[See detailed guide →](docs/server-to-server.md)**
 
+## Payout
+
+Distribute funds to ABA account holders or ABA merchants. Beneficiaries must be whitelisted first, and all payout operations need the RSA public key from ABA.
+
+```typescript
+// 1. Whitelist the beneficiary (active immediately)
+await client.execute(
+  client.buildAddBeneficiaryPayload({ payee: '318111358120004' })
+);
+
+// 2a. Standalone payout — debits your settlement account
+await client.execute(
+  client.buildPayoutPayload({
+    tran_id: 'PAYOUT-123',
+    beneficiaries: [{ account: '200030000', amount: 3.44 }],
+    amount: 3.44,
+    currency: 'USD'
+  })
+);
+
+// 2b. Or split the funds of a purchase you are collecting
+client.buildTransactionPayload({
+  tran_id: 'ORDER-123',
+  amount: 10,
+  payout: [{ acc: '000133879', amt: 7 }]  // Auto base64 encoded
+});
+```
+
+**[See detailed guide →](docs/payout.md)**
+
 ## Documentation
 
 Comprehensive guides for every use case:
@@ -151,6 +222,7 @@ Comprehensive guides for every use case:
 - **[Client-Side Form Submission](docs/client-side-form-submission.md)** - Pattern 1 guide for `abapay`
 - **[Server-to-Server](docs/server-to-server.md)** - Pattern 2 guide for API calls
 - **[Pre-Authorization](docs/pre-authorization.md)** - Two-step payment process
+- **[Payout](docs/payout.md)** - Distribute funds to beneficiaries, split or standalone
 - **[API Reference](docs/api-reference.md)** - Complete method documentation
 - **[Error Handling](docs/error-handling.md)** - Handle errors properly
 - **[Security Best Practices](docs/security.md)** - Keep your integration secure
@@ -170,7 +242,7 @@ PAYWAY_API_KEY=your_sandbox_api_key
 # PAYWAY_MERCHANT_ID=your_production_merchant_id
 # PAYWAY_API_KEY=your_production_api_key
 
-# Optional: For pre-authorization
+# Optional: Required for pre-authorization and payout
 # ABA_RSA_PUBLIC_KEY=your_rsa_public_key
 
 NEXT_PUBLIC_APP_URL=https://yoursite.com
