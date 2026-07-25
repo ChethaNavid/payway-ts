@@ -131,11 +131,23 @@ export interface TransactionListParams {
   limit_limit_type?: "purchase" | "pre-auth"
   limit_limit_firstname?: string
   limit_limit_lastname?: string
+  /**
+   * Start date in `yyyy-MM-dd HH:mm:ss` format. Defaults to today 00:00:00.
+   *
+   * PayWay rejects any other format, and the range to `to_date` may not
+   * exceed 3 days.
+   */
   from_date?: string;
+  /** End date in `yyyy-MM-dd HH:mm:ss` format. Defaults to today 23:59:59. */
   to_date?: string;
   from_amount?: string | number;
   to_amount?: string | number;
+  /** One or more statuses, comma separated. Case-insensitive. */
   status?: TransactionStatus;
+  /** Page index, 1-based. Defaults to 1. */
+  page?: string | number;
+  /** Records per page. Defaults to 40, maximum 1000. */
+  pagination?: string | number;
 }
 
 /**

@@ -199,7 +199,8 @@ export function buildTransactionListPayload(
   config: PayWayConfig,
   params: TransactionListParams = {},
 ): PayloadBuilderResponse {
-  const { from_date, to_date, from_amount, to_amount, status } = params;
+  const { from_date, to_date, from_amount, to_amount, status, page, pagination } =
+    params;
 
   const fields = createPayload(config, {
     from_date,
@@ -207,6 +208,8 @@ export function buildTransactionListPayload(
     from_amount,
     to_amount,
     status,
+    page,
+    pagination,
   });
 
   return {
