@@ -159,8 +159,8 @@ const status = await client.execute(
 // List transactions
 const transactions = await client.execute(
   client.buildTransactionListPayload({
-    from_date: '20240101000000',
-    to_date: '20240131235959'
+    from_date: '2024-01-01 00:00:00',
+    to_date: '2024-01-03 23:59:59'
   })
 );
 ```

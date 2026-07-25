@@ -210,16 +210,22 @@ interface TransactionListParams {
   from_amount?: number | string;
   to_amount?: number | string;
   status?: TransactionStatus;
+  page?: number | string;
+  pagination?: number | string;
 }
 ```
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `from_date` | string | No | Start date (yyyyMMddHHmmss) |
-| `to_date` | string | No | End date (yyyyMMddHHmmss) |
+| `from_date` | string | No | Start date (yyyy-MM-dd HH:mm:ss). Defaults to today 00:00:00 |
+| `to_date` | string | No | End date (yyyy-MM-dd HH:mm:ss). Defaults to today 23:59:59 |
 | `from_amount` | number \| string | No | Minimum amount filter |
 | `to_amount` | number \| string | No | Maximum amount filter |
-| `status` | TransactionStatus | No | Status filter (e.g., "APPROVED") |
+| `status` | TransactionStatus | No | Status filter, comma separated for multiple (e.g., "APPROVED") |
+| `page` | number \| string | No | Page index, 1-based. Defaults to 1 |
+| `pagination` | number \| string | No | Records per page. Defaults to 40, max 1000 |
+
+The `from_date`–`to_date` range may not exceed 3 days.
 
 ### Transaction Status Types
 
@@ -237,8 +243,8 @@ type TransactionStatus =
 
 ```typescript
 const payload = client.buildTransactionListPayload({
-  from_date: "20240101000000",
-  to_date: "20240131235959",
+  from_date: "2024-01-01 00:00:00",
+  to_date: "2024-01-03 23:59:59",
   status: "APPROVED"
 });
 

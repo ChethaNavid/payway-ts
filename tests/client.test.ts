@@ -303,8 +303,8 @@ describe("PayWayClient", () => {
       );
 
       const payload = client.buildTransactionListPayload({
-        from_date: "20240101000000",
-        to_date: "20240131235959",
+        from_date: "2024-01-01 00:00:00",
+        to_date: "2024-01-03 23:59:59",
         from_amount: "10",
         to_amount: "1000",
         status: "APPROVED",
@@ -312,8 +312,8 @@ describe("PayWayClient", () => {
 
       expect(payload.fields).toHaveProperty("req_time");
       expect(payload.fields).toHaveProperty("merchant_id", "merchant_123");
-      expect(payload.fields).toHaveProperty("from_date", "20240101000000");
-      expect(payload.fields).toHaveProperty("to_date", "20240131235959");
+      expect(payload.fields).toHaveProperty("from_date", "2024-01-01 00:00:00");
+      expect(payload.fields).toHaveProperty("to_date", "2024-01-03 23:59:59");
       expect(payload.fields).toHaveProperty("from_amount", "10");
       expect(payload.fields).toHaveProperty("to_amount", "1000");
       expect(payload.fields).toHaveProperty("status", "APPROVED");
@@ -335,6 +335,35 @@ describe("PayWayClient", () => {
       // No filter fields should be present
       expect(payload.fields).not.toHaveProperty("from_date");
       expect(payload.fields).not.toHaveProperty("to_date");
+    });
+
+    it("should hash fields in PayWay's documented order", () => {
+      const client = new PayWayClient("http://example.com", "1", "1");
+
+      const payload = client.buildTransactionListPayload({
+        from_date: "2024-01-01 00:00:00",
+        to_date: "2024-01-03 23:59:59",
+        from_amount: 10,
+        to_amount: 1000,
+        status: "APPROVED",
+        page: 2,
+        pagination: 100,
+      });
+
+      expect(Object.keys(payload.fields)).toEqual([
+        "req_time",
+        "merchant_id",
+        "from_date",
+        "to_date",
+        "from_amount",
+        "to_amount",
+        "status",
+        "page",
+        "pagination",
+        "hash",
+      ]);
+      expect(payload.fields.page).toBe("2");
+      expect(payload.fields.pagination).toBe("100");
     });
   });
 

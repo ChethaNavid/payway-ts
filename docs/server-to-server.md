@@ -157,8 +157,8 @@ export async function GET(request: Request) {
     const transactions = await client.execute(
       client.buildTransactionListPayload({
         status: status as any,
-        from_date: '20240101000000',
-        to_date: '20241231235959'
+        from_date: '2024-01-01 00:00:00',
+        to_date: '2024-01-03 23:59:59'
       })
     );
     
@@ -175,8 +175,8 @@ export async function GET(request: Request) {
 // Get transaction list
 const transactions = await client.execute(
   client.buildTransactionListPayload({
-    from_date: '20240101000000',
-    to_date: '20240131235959',
+    from_date: '2024-01-01 00:00:00',
+    to_date: '2024-01-03 23:59:59',
     status: 'APPROVED'
   })
 );
@@ -188,11 +188,13 @@ console.log('Transactions:', transactions);
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `from_date` | string | Start date (yyyyMMddHHmmss) |
-| `to_date` | string | End date (yyyyMMddHHmmss) |
+| `from_date` | string | Start date (yyyy-MM-dd HH:mm:ss, max 3-day range) |
+| `to_date` | string | End date (yyyy-MM-dd HH:mm:ss, max 3-day range) |
 | `from_amount` | number \| string | Minimum amount |
 | `to_amount` | number \| string | Maximum amount |
 | `status` | TransactionStatus | Filter by status (e.g., "APPROVED", "PENDING") |
+| `page` | number \| string | Page index, 1-based (default 1) |
+| `pagination` | number \| string | Records per page (default 40, max 1000) |
 
 ## Payment Options
 
