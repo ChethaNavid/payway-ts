@@ -100,15 +100,6 @@ export function buildTransactionPayload(
   } = params;
 
   let processedReturnUrl = return_url;
-  let processedCancelUrl = cancel_url;
-  let processedContinueSuccessUrl = continue_success_url;
-  if (typeof continue_success_url === "string") {
-    processedContinueSuccessUrl = base64(continue_success_url);
-  }
-
-  if (typeof cancel_url === "string") {
-    processedCancelUrl = base64(cancel_url);
-  }
 
   if (typeof return_url === "string") {
     processedReturnUrl = base64(return_url);
@@ -138,8 +129,8 @@ export function buildTransactionPayload(
     type,
     payment_option,
     return_url: processedReturnUrl,
-    cancel_url: processedCancelUrl,
-    continue_success_url: processedContinueSuccessUrl,
+    cancel_url,
+    continue_success_url,
     return_deeplink: processedReturnDeeplink,
     currency,
     custom_fields,
