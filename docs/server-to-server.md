@@ -196,6 +196,59 @@ console.log('Transactions:', transactions);
 | `page` | number \| string | Page index, 1-based (default 1) |
 | `pagination` | number \| string | Records per page (default 40, max 1000) |
 
+## Close a Transaction
+
+Cancel a transaction that has not been paid yet. Once closed, ABA PayWay rejects or reverses any incoming payment for that `tran_id` and sends no callback — so a customer who left the checkout page open cannot pay for an order you have already released.
+
+```typescript
+// app/api/payment/close/[tranId]/route.ts
+import { PayWayClient } from 'payway-ts';
+
+const client = new PayWayClient(
+  process.env.PAYWAY_BASE_URL!,
+  process.env.PAYWAY_MERCHANT_ID!,
+  process.env.PAYWAY_API_KEY!
+);
+
+export async function POST(
+  request: Request,
+  { params }: { params: { tranId: string } }
+) {
+  try {
+    const result = await client.execute(
+      client.buildCloseTransactionPayload(params.tranId)
+    );
+
+    return Response.json(result);
+  } catch (error) {
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+}
+```
+
+**Simple usage:**
+
+```typescript
+const result = await client.execute(
+  client.buildCloseTransactionPayload('ORDER-123')
+);
+
+if (result.status.code === '00') {
+  console.log('Transaction closed');
+}
+```
+
+### Response Codes
+
+| Code | Meaning |
+|------|---------|
+| `00` | Success |
+| `1` | Wrong hash |
+| `5` | Transaction not found |
+| `26` | Invalid merchant profile |
+
+This endpoint expects a JSON body rather than form data, unlike the other transaction endpoints. `execute()` handles that for you.
+
 ## Payment Options
 
 The following payment options work with this pattern:

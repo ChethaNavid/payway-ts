@@ -3,6 +3,7 @@ import { execute, type ExecuteResult } from "./execute.js";
 import {
   buildTransactionPayload,
   buildCheckTransactionPayload,
+  buildCloseTransactionPayload,
   buildTransactionListPayload,
 } from "./payloads/transaction.js";
 import {
@@ -160,6 +161,31 @@ export class PayWayClient implements PayWayConfig {
    */
   buildCheckTransactionPayload(tran_id: string): PayloadBuilderResponse {
     return buildCheckTransactionPayload(this, tran_id);
+  }
+
+  /**
+   * Builds a close transaction payload
+   *
+   * Use this to cancel a pending transaction before it is paid - useful for
+   * expiring holds on limited stock, such as flash sales or seat reservations.
+   * After closing, ABA PayWay rejects or reverses any incoming payment for this
+   * `tran_id` and sends no callback.
+   *
+   * Unlike the other transaction endpoints, this one is sent as JSON.
+   *
+   * @param tran_id - Transaction ID to close
+   * @returns Payload with fields, JSON body, hash, and URL
+   *
+   * @example
+   * ```typescript
+   * const result: any = await client.execute(
+   *   client.buildCloseTransactionPayload("ORDER-123")
+   * );
+   * console.log('Code:', result.status.code); // "00" on success
+   * ```
+   */
+  buildCloseTransactionPayload(tran_id: string): PayloadBuilderResponse {
+    return buildCloseTransactionPayload(this, tran_id);
   }
 
   /**

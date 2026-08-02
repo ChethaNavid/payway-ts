@@ -8,10 +8,12 @@ import type {
 } from "../types.js";
 
 /**
- * Purchase, check-transaction and transaction-list payload builders.
+ * Purchase, check-transaction, transaction-list and close-transaction payload
+ * builders.
  *
- * These are the form-encoded endpoints: the hash covers `req_time`, `merchant_id`
- * and then every body value in insertion order.
+ * They share one hash construction: it covers `req_time`, `merchant_id` and then
+ * every body value in insertion order. Only close-transaction is sent as JSON -
+ * the rest are form-encoded.
  *
  * @packageDocumentation
  */
@@ -176,6 +178,32 @@ export function buildCheckTransactionPayload(
     hash: fields.hash,
     url: `${config.base_url}api/payment-gateway/v1/payments/check-transaction-2`,
     method: "POST",
+  };
+}
+
+/**
+ * Builds a close transaction payload
+ *
+ * Closing a pending transaction stops it from accepting payment: any incoming
+ * payment is rejected or reversed, and no callback is sent to the merchant.
+ *
+ * @param config - Merchant credentials
+ * @param tran_id - Transaction ID to close
+ * @returns Payload with fields, JSON body, hash, and URL
+ */
+export function buildCloseTransactionPayload(
+  config: PayWayConfig,
+  tran_id: string,
+): PayloadBuilderResponse {
+  const fields = createPayload(config, { tran_id });
+
+  return {
+    fields,
+    body: { ...fields },
+    hash: fields.hash,
+    url: `${config.base_url}api/payment-gateway/v1/payments/close-transaction`,
+    method: "POST",
+    contentType: "application/json",
   };
 }
 
