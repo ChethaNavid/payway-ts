@@ -43,6 +43,7 @@ The SDK provides two integration patterns:
 - Create ABA PayWay transactions (purchase / checkout)
 - Check transaction status by `tran_id`
 - List transactions for a date range
+- Close (cancel) a pending transaction before it is paid
 - HMAC-SHA512 request signing, handled automatically
 
 ### What payway-ts adds
@@ -162,6 +163,11 @@ const transactions = await client.execute(
     from_date: '2024-01-01 00:00:00',
     to_date: '2024-01-03 23:59:59'
   })
+);
+
+// Close a transaction that has not been paid yet
+const closed = await client.execute(
+  client.buildCloseTransactionPayload('ORDER-123')
 );
 ```
 

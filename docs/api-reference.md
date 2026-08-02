@@ -43,6 +43,7 @@ const client = new PayWayClient(
 |--------|---------|---------|
 | `buildTransactionPayload()` | Build payment transaction | `PayloadBuilderResponse` |
 | `buildCheckTransactionPayload()` | Build status check | `PayloadBuilderResponse` |
+| `buildCloseTransactionPayload()` | Build close of a pending transaction | `PayloadBuilderResponse` |
 | `buildTransactionListPayload()` | Build transaction list query | `PayloadBuilderResponse` |
 | `buildCompletePreAuthPayload()` | Build pre-auth completion | `PayloadBuilderResponse` |
 | `buildCompletePreAuthWithPayoutPayload()` | Build pre-auth completion with payout | `PayloadBuilderResponse` |
@@ -249,6 +250,46 @@ const payload = client.buildTransactionListPayload({
 });
 
 const transactions = await client.execute(payload);
+```
+
+---
+
+## buildCloseTransactionPayload()
+
+Build a payload to close (cancel) a transaction that has not been paid yet.
+
+```typescript
+buildCloseTransactionPayload(tran_id: string): PayloadBuilderResponse
+```
+
+Once a transaction is closed it no longer accepts payment: ABA PayWay rejects or reverses any incoming payment for that `tran_id`, and sends no callback to your server. Use it to expire holds on limited stock — flash sales, seat reservations, ticketing.
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `tran_id` | string | **Yes** | Transaction ID to close (max 20 characters) |
+
+### Returns
+
+`PayloadBuilderResponse` with `contentType: "application/json"` and a `body` object. This is the only transaction endpoint sent as JSON rather than form data — `execute()` handles the difference for you.
+
+### Response Codes
+
+| Code | Meaning |
+|------|---------|
+| `00` | Success |
+| `1` | Wrong hash |
+| `5` | Transaction not found |
+| `26` | Invalid merchant profile |
+
+### Example
+
+```typescript
+const payload = client.buildCloseTransactionPayload("ORDER-123");
+
+const result = await client.execute(payload);
+console.log(result.status.code); // "00" on success
 ```
 
 ---
@@ -735,7 +776,7 @@ interface PayloadBuilderResponse {
 | `url` | Full URL to submit to |
 | `method` | Always `"POST"` |
 | `body` | Request body with values in native types. Present only for JSON endpoints. |
-| `contentType` | Defaults to `"multipart/form-data"` when absent. `"application/json"` for the payout and beneficiary whitelist endpoints. |
+| `contentType` | Defaults to `"multipart/form-data"` when absent. `"application/json"` for the close transaction, payout and beneficiary whitelist endpoints. |
 
 `execute()` handles both content types for you. If you make the request yourself, send `body` rather than `fields` for JSON endpoints — the payout `amount` must stay a number:
 

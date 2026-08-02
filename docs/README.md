@@ -27,6 +27,7 @@ Welcome to the payway-ts documentation! This guide will help you integrate ABA P
 - **Accept card payments** → [Server-to-Server](server-to-server.md)
 - **Check transaction status** → [Server-to-Server: Check Status](server-to-server.md#check-transaction-status)
 - **List transactions** → [Server-to-Server: List Transactions](server-to-server.md#list-transactions)
+- **Cancel a transaction before it is paid** → [Server-to-Server: Close a Transaction](server-to-server.md#close-a-transaction)
 - **Reserve funds first, charge later** → [Pre-Authorization](pre-authorization.md)
 - **Split a purchase across multiple accounts** → [Payout: Split & Payout](payout.md#step-2b-split--payout)
 - **Send funds from my settlement account** → [Payout: Standalone Payout](payout.md#step-2a-standalone-payout)
