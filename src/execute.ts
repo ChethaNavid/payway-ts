@@ -3,6 +3,7 @@ import type {
   ExecuteOptions,
   ReturnType,
   PaywayPaymentStatusCheckResponse,
+  CloseTransactionResponse,
   PayoutResponse,
   BeneficiaryResponse,
 } from "./types.js";
@@ -19,6 +20,7 @@ import type {
 export type ExecuteResult =
   | ReturnType
   | PaywayPaymentStatusCheckResponse
+  | CloseTransactionResponse
   | PayoutResponse
   | BeneficiaryResponse
   | string;

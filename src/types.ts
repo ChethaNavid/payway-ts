@@ -67,6 +67,21 @@ export interface PaywayPaymentStatusCheckResponse {
   };
 }
 
+/**
+ * Response from the Close Transaction API
+ */
+export interface CloseTransactionResponse {
+  status: {
+    /**
+     * "00" on success. Failures: 1 (wrong hash), 5 (transaction not found),
+     * 26 (invalid merchant profile)
+     */
+    code: string;
+    message: string;
+    tran_id: string;
+  };
+}
+
 export type PaymentOption =
   | "cards"
   | "abapay_khqr"

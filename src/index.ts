@@ -29,6 +29,7 @@ export type {
   PayWayAPIError,
   ReturnType,
   PaywayPaymentStatusCheckResponse,
+  CloseTransactionResponse,
   PayoutBeneficiary,
   PayoutParams,
   PayoutResponse,
