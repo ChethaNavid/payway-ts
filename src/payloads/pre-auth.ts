@@ -12,7 +12,7 @@ import type {
  * Pre-authorization completion and cancellation payload builders.
  *
  * All three endpoints share one shape: sensitive data is RSA encrypted into
- * `merchant_auth`, and the hash covers `merchant_auth + request_time + merchant_id`.
+ * `merchant_auth`, and the hash covers `merchant_id + merchant_auth + request_time`.
  *
  * @packageDocumentation
  */
@@ -36,11 +36,11 @@ function buildPreAuthPayload(
   // Create request time
   const request_time = formatRequestTime(new Date());
 
-  // Create HMAC hash: merchant_auth + request_time + merchant_id
+  // Create HMAC hash: merchant_id + merchant_auth + request_time
   const hash = createHash(config.api_key, [
+    config.merchant_id,
     merchant_auth,
     request_time,
-    config.merchant_id,
   ]);
 
   // Build fields
